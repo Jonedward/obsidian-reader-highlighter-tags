@@ -1,0 +1,40 @@
+name: Mobile test build
+
+on:
+  push:
+    branches:
+      - fix/selection-resolution-cjk-punctuation
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Use Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm install --legacy-peer-deps
+
+      - name: Run tests
+        run: npm test
+
+      - name: Build plugin
+        run: npm run build
+
+      - name: Package Obsidian plugin
+        uses: actions/upload-artifact@v4
+        with:
+          name: reader-highlighter-tags-mobile-test
+          path: |
+            main.js
+            manifest.json
+            styles.css
+          if-no-files-found: error
+          retention-days: 7
