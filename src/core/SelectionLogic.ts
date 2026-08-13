@@ -104,7 +104,7 @@ const BLOCK_LEVEL_TAGS_FOR_SPLIT = new Set([
 // Inline "noise" tokens that may exist in source Markdown but not in Reading view selections.
 // Keep this list conservative to avoid over-matching visible content (e.g., inside code blocks).
 const INLINE_DECORATION_PATTERN =
-    "<mark[^>]*>|<\\/mark>|==|\\*\\*|~~|\\*|_|`|\\[\\[|\\]\\]|\\[|\\]|\\$|\\^\\[[^\\]]+\\]|\\^[a-zA-Z0-9-]+|%%[^%]*%%|\\^|\\\\|\\{|\\}|\\||\\d|<sub>|<sup>|<\\/sub>|<\\/sup>";
+    "<mark[^>]*>|<\\/mark>|==|\\*\\*|~~|\\*|_|`|\\[\\[|\\]\\]|\\[|\\]|\\$|\\^\\[[^\\]]+\\]|\\^[a-zA-Z0-9-]+|%%[^%]*%%|\\^|\\\\|\\{|\\}|\\||<sub>|<sup>|<\\/sub>|<\\/sup>";
 const GAP_PATTERN = "[\\s\\u00a0\\u1680\\u2000-\\u200b\\u202f\\u205f\\u3000\\u21a9\\u21b5\\ufe0e\\ufe0f]";
 // Additional single-character gaps that can exist in Markdown source but are often invisible in Reading view.
 // Keep this as a character class (not a long alternation) for performance.
@@ -694,7 +694,8 @@ export class SelectionLogic {
 
             const after = raw.substring(candidate.end);
             const nextSeparator = after.match(/\r?\n[ \t]*\r?\n/);
-            blockEnd = nextSeparator && nextSeparator.index !== undefined ? candidate.end + nextSeparator.index : raw.length;
+            blockEnd =
+                nextSeparator && nextSeparator.index !== undefined ? candidate.end + nextSeparator.index : raw.length;
         }
 
         const text = raw
@@ -750,7 +751,9 @@ export class SelectionLogic {
             const threshold = bestScore >= 100 ? bestScore : bestScore * 0.85;
             const validGroups = sourceGroups.filter((group) => group.score >= threshold);
             const chosenGroup =
-                occurrenceIndex >= 0 && occurrenceIndex < validGroups.length ? validGroups[occurrenceIndex] : validGroups[0];
+                occurrenceIndex >= 0 && occurrenceIndex < validGroups.length
+                    ? validGroups[occurrenceIndex]
+                    : validGroups[0];
 
             if (chosenGroup) {
                 const chosen = [...chosenGroup.candidates].sort((a, b) => a.start - b.start)[0];

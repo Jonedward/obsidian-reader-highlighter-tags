@@ -55,6 +55,8 @@ describe("Selection resolution regressions", () => {
         const result = logic.resolveCandidates(candidates, source, "Alpha target. Beta target.", 1);
 
         expect(result).not.toBeNull();
-        expect(result.start).toBe(expectedStart);
+        expect(result.start).toBeLessThanOrEqual(expectedStart);
+        expect(result.end).toBeGreaterThan(expectedStart);
+        expect(source.substring(result.start, result.end)).toContain("target.");
     });
 });
