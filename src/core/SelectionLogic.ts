@@ -415,7 +415,7 @@ export class SelectionLogic {
             const linkPath = pipeIdx === -1 ? linkPathWithAlias : linkPathWithAlias.slice(0, pipeIdx);
 
             const targetFile = this.app.metadataCache.getFirstLinkpathDest(linkPath, file.path);
-            if (targetFile) {
+            if (targetFile && targetFile.extension === "md") {
                 const subContext = { ...opContext, visited: new Set(opContext.visited) };
                 const subVirtual = await this.resolveVirtualContent(targetFile, depth + 1, subContext, embedFragment);
                 const embedStart = virtualText.length;
