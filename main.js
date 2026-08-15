@@ -1162,7 +1162,7 @@ var BLOCK_LEVEL_TAGS_FOR_SPLIT = /* @__PURE__ */ new Set([
   "TD",
   "TH"
 ]);
-var INLINE_DECORATION_PATTERN = "<mark[^>]*>|<\\/mark>|==|\\*\\*|~~|\\*|_|`|\\[\\[|\\]\\]|\\[|\\]|\\$|\\^\\[[^\\]]+\\]|\\^[a-zA-Z0-9-]+|%%[^%]*%%|\\^|\\\\|\\{|\\}|\\||\\d|<sub>|<sup>|<\\/sub>|<\\/sup>";
+var INLINE_DECORATION_PATTERN = "<mark[^>]*>|<\\/mark>|==|\\*\\*|~~|\\*|_|`|\\[\\[|\\]\\]|\\[|\\]|\\$|\\^\\[[^\\]]+\\]|\\^[a-zA-Z0-9-]+|%%[^%]*%%|\\^|\\\\|\\{|\\}|\\||<sub>|<sup>|<\\/sub>|<\\/sup>";
 var GAP_PATTERN = "[\\s\\u00a0\\u1680\\u2000-\\u200b\\u202f\\u205f\\u3000\\u21a9\\u21b5\\ufe0e\\ufe0f]";
 var EXTRA_GAP_CHARS_PATTERN = "[-\\u2010-\\u2015\"'\u201C\u201D\u2018\u2019\xAB\xBB\\\\|>#*_~=$^{}()\\[\\]`]";
 var FLEX_GAP_ATOMIC_PATTERN = `(?:${GAP_PATTERN}|${EXTRA_GAP_CHARS_PATTERN})`;
@@ -1249,16 +1249,16 @@ var SelectionLogic = class {
       diagnostics.strategies.blockSequence = { tried: false, reason: "single block" };
     }
     if (candidates.length === 0) {
-      candidates = this.findHybridCandidates(bodyContent, snippet, 0);
-      diagnostics.strategies.hybridMatch = { tried: true, found: candidates.length };
-    }
-    if (candidates.length === 0) {
       candidates = this.findAllCandidates(bodyContent, snippet, 0);
       diagnostics.strategies.flexiblePattern = { tried: true, found: candidates.length };
     }
     if (candidates.length === 0) {
       candidates = this.findCandidatesStripped(bodyContent, snippet, 0);
       diagnostics.strategies.strippedMatch = { tried: true, found: candidates.length };
+    }
+    if (candidates.length === 0) {
+      candidates = this.findHybridCandidates(bodyContent, snippet, 0);
+      diagnostics.strategies.hybridMatch = { tried: true, found: candidates.length };
     }
     if (candidates.length === 0) {
       candidates = this.findFuzzyCandidates(bodyContent, snippet, 0);
@@ -1395,7 +1395,7 @@ var SelectionLogic = class {
       const pipeIdx = linkPathWithAlias.indexOf("|");
       const linkPath = pipeIdx === -1 ? linkPathWithAlias : linkPathWithAlias.slice(0, pipeIdx);
       const targetFile = this.app.metadataCache.getFirstLinkpathDest(linkPath, file.path);
-      if (targetFile) {
+      if (targetFile && targetFile.extension === "md") {
         const subContext = { ...opContext, visited: new Set(opContext.visited) };
         const subVirtual = await this.resolveVirtualContent(targetFile, depth + 1, subContext, embedFragment);
         const embedStart = virtualText.length;
@@ -1607,30 +1607,59 @@ var SelectionLogic = class {
       raw: ""
     };
   }
+  getCandidateSourceBlock(raw, candidate) {
+    const lineStart = raw.lastIndexOf("\n", Math.max(0, candidate.start - 1)) + 1;
+    const nextBreak = raw.indexOf("\n", candidate.end);
+    const lineEnd = nextBreak === -1 ? raw.length : nextBreak;
+    const candidateLine = raw.substring(lineStart, lineEnd).replace(/\r$/, "");
+    const lineParts = this.splitMarkdownLine(candidateLine);
+    let blockStart = lineStart;
+    let blockEnd = lineEnd;
+    if (!lineParts.prefix) {
+      const before = raw.substring(0, candidate.start);
+      const separators = [...before.matchAll(/\r?\n[ \t]*\r?\n/g)];
+      const previousSeparator = separators[separators.length - 1];
+      if (previousSeparator) {
+        blockStart = previousSeparator.index + previousSeparator[0].length;
+      } else {
+        blockStart = 0;
+      }
+      const after = raw.substring(candidate.end);
+      const nextSeparator = after.match(/\r?\n[ \t]*\r?\n/);
+      blockEnd = nextSeparator && nextSeparator.index !== void 0 ? candidate.end + nextSeparator.index : raw.length;
+    }
+    const text = raw.substring(blockStart, blockEnd).split(/\r?\n/).map((line) => this.normalizeLineForCompare(line)).filter((line) => line.length > 0).join(" ").replace(/\s+/g, " ").trim();
+    return { start: blockStart, end: blockEnd, text };
+  }
   resolveCandidates(candidates, raw, context, occurrenceIndex) {
     if (candidates.length === 0) return null;
     if (context) {
-      const cleanContext = context.replace(/\s+/g, " ").trim();
-      candidates = candidates.map((cand) => {
-        const sourceBlock = (cand.text || raw.substring(cand.start, cand.end)).replace(/\s+/g, " ").trim();
-        const score = this.calculateSimilarity(sourceBlock, cleanContext);
-        return { ...cand, score };
-      });
-      const bestScore = Math.max(...candidates.map((candidate) => {
-        var _a;
-        return (_a = candidate.score) != null ? _a : 0;
-      }));
-      const threshold = bestScore * 0.85;
-      const validCandidates = candidates.filter((candidate) => {
-        var _a;
-        return ((_a = candidate.score) != null ? _a : 0) >= threshold;
-      });
-      if (occurrenceIndex >= 0 && occurrenceIndex < validCandidates.length) {
-        const chosen = validCandidates[occurrenceIndex];
-        return { raw, start: chosen.start, end: chosen.end };
+      const cleanContext = this.normalizeComparableText(context);
+      const groups = /* @__PURE__ */ new Map();
+      for (const candidate of candidates) {
+        const sourceBlock = this.getCandidateSourceBlock(raw, candidate);
+        const score = this.calculateSimilarity(sourceBlock.text, cleanContext);
+        const key = `${sourceBlock.start}:${sourceBlock.end}`;
+        const existing = groups.get(key);
+        if (existing) {
+          existing.score = Math.max(existing.score, score);
+          existing.candidates.push(candidate);
+        } else {
+          groups.set(key, {
+            ...sourceBlock,
+            score,
+            candidates: [candidate]
+          });
+        }
       }
-      if (validCandidates.length > 0) {
-        return { raw, start: validCandidates[0].start, end: validCandidates[0].end };
+      const sourceGroups = [...groups.values()].sort((a, b) => a.start - b.start);
+      const bestScore = Math.max(...sourceGroups.map((group) => group.score));
+      const threshold = bestScore >= 100 ? bestScore : bestScore * 0.85;
+      const validGroups = sourceGroups.filter((group) => group.score >= threshold);
+      const chosenGroup = occurrenceIndex >= 0 && occurrenceIndex < validGroups.length ? validGroups[occurrenceIndex] : validGroups[0];
+      if (chosenGroup) {
+        const chosen = [...chosenGroup.candidates].sort((a, b) => a.start - b.start)[0];
+        return { raw, start: chosen.start, end: chosen.end };
       }
     }
     return { raw, start: candidates[0].start, end: candidates[0].end };
